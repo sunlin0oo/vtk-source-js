@@ -1,0 +1,10 @@
+{
+    "configurations": [
+        {
+            "type": "chrome",
+            "name": "http://replaceShaderNormal",
+            "request": "launch",
+            "url": "http://replaceShaderNormal"
+        }
+    ]
+}
