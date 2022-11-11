@@ -1,3 +1,5 @@
+/* eslint-disable prettier/prettier */
+/* eslint-disable no-unused-vars */
 import macro from 'vtk.js/Sources/macros';
 import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 import vtkCellArray from 'vtk.js/Sources/Common/Core/CellArray';
@@ -34,7 +36,7 @@ function vtkClipClosedSurface(publicAPI, model) {
    */
   function createColorValues(color1, color2, color3, colors) {
     const dcolors = [color1, color2, color3];
-    console.log('dcolors', dcolors);
+    // console.log('dcolors', dcolors);
     const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
 
     for (let i = 0; i < 3; i++) {
@@ -208,7 +210,7 @@ function vtkClipClosedSurface(publicAPI, model) {
     scalars, // undefined
     color
   ) {
-    console.log('inputScalars', inputScalars, firstLineScalar, scalars);
+    // console.log('inputScalars', inputScalars, firstLineScalar, scalars);
     const cellColor = [...color];
 
     let cellId = 0;
@@ -228,7 +230,7 @@ function vtkClipClosedSurface(publicAPI, model) {
         }
       }
     }
-    console.log('outputLines', outputLines.toJSON());
+    // console.log('outputLines', outputLines.toJSON());
   }
 
   /**
@@ -272,6 +274,8 @@ function vtkClipClosedSurface(publicAPI, model) {
           polyScalars.setTuple(i, scalarValue);
         }
       }
+      // 根据BaseColor进行颜色的设置，我写死BaseColor为[0,0,0]==>全部设置为0 也就是灰色
+      console.log('copyPolygons-polyscalars', polyScalars.toJSON());
     }
   }
 
@@ -549,19 +553,34 @@ function vtkClipClosedSurface(publicAPI, model) {
    * @param {String} outputPointDataType
    */
   function squeezeOutputPoints(output, points, pointData, outputPointDataType) {
+    console.log(
+      'squeezeOutputPoints-output',
+      output.toJSON(),
+    ); // CellData可以获取到哪些单元是进行变色了的==>知晓哪些单元ID便可知晓单元涉及的顶点，将对应的点标量改成0即可
+    const CellLen = output.toJSON().cellData.arrays[0].data.size
+    const sumCellArray = output.toJSON().cellData.arrays[0].data.values
+    // 用于存储哪些单元是要进行变色的
+    const cellIdArray = [];
+    for (let i = 0; i < CellLen; i+=3) {
+        if(sumCellArray[i] === 255) cellIdArray.push(i / 3);
+    }
+    console.log('squeezeOutputPoints-cellIdArray', cellIdArray);
     // Create a list of points used by cells
-    const n = points.getNumberOfPoints();
+    const n = points.getNumberOfPoints(); // 顶点长度
     let numNewPoints = 0;
-
-    const outPointData = output.getPointData();
-    const pointMap = [];
+    
+    const outPointData = output.getPointData(); // 点标量
+    const pointMap = []; // 顶点ID 对应 新增加的顶点数量(而这个value值则是当前坐标在被裁剪后的顶点索引)
     pointMap.length = n;
-    // 在这里把Line给清空了
+
+    // Cell对应Poly中的索引位置也就是索引的起点或者说是Cell组成的顶点个数的起点
+    const cellToPolyIndex = [];
+
     const cellArrays = [
-      output.getVerts(),
-      output.getLines(),
-      output.getPolys(),
-      output.getStrips(),
+      output.getVerts(), // null
+      output.getLines(), // null
+      output.getPolys(), // 找到被CELL所使用的新增点 == numberOfCells: 41
+      output.getStrips(), // null
     ];
     // Find all the newPoints that are used by cells
     cellArrays.forEach((cellArray) => {
@@ -569,11 +588,15 @@ function vtkClipClosedSurface(publicAPI, model) {
         return;
       }
       const values = cellArray.getData();
-      let numPts;
+      console.log('squeezeOutputPoints-values', cellArray.toJSON());
+      let numPts; // 组成单元
       let pointId;
       for (let i = 0; i < values.length; i += numPts + 1) {
+        // 记录单元的组成数
         numPts = values[i];
+        cellToPolyIndex.push(i);
         for (let j = 1; j <= numPts; j++) {
+          // 在单元组成数的基础上
           pointId = values[i + j];
           if (pointMap[pointId] === undefined) {
             pointMap[pointId] = numNewPoints++;
@@ -581,32 +604,44 @@ function vtkClipClosedSurface(publicAPI, model) {
         }
       }
     });
+    // 小疑问，未被填充的PointMap为何会有值
+    console.log('squeezeOutputPoints-pointMap', pointMap, numNewPoints, cellToPolyIndex);
 
-    // Create exactly the number of points that are required
+    // numNewPoints 这里新增顶点数量是切面的顶点(暂定是)
+    // Create exactly the number of points that are required==>作为最终的结果进行输出
     const newPoints = vtkPoints.newInstance({
       size: numNewPoints * 3,
       dataType: outputPointDataType,
     });
     // outPointData.copyAllocate(pointData, numNewPoints, 0);
 
+    console.log('squeezeOutputPoints-pointData', pointData.toJSON());
     const p = [];
-    let newPointId;
+    let newPointId; // 将新增顶点插入到newPointId中
+    // pointId是原始的顶点坐标  newPointId 是处理后的顶点坐标
     for (let pointId = 0; pointId < n; pointId++) {
+      // n是所有的顶点编号==>顶点Map中寻找对应点ID==>所有点==>则去创造额外的
       newPointId = pointMap[pointId];
       if (newPointId !== undefined) {
+        // 获取每顶点的坐标由ponit进行存储(覆盖掉之前的存储信息)
         points.getPoint(pointId, p);
+        // 然后插入到newPoints中
         newPoints.setTuple(newPointId, p);
+        // other: vtkFieldData, fromId?: number, toId?: number
         outPointData.passData(pointData, pointId, newPointId);
+        // 将原始顶点编号对应处理后的顶点进行标量对应设置
         // outPointData.copyData(pointData, pointId, newPointId);
       }
     }
-
-    // Change the cell pointIds to reflect the new point array
+    console.log('squeezeOutputPoints-outPointData', outPointData.toJSON());
+    console.log('squeezeOutputPoints-newPoints', newPoints.toJSON());
+    // Change the cell pointIds to reflect the new point array==>重新映射
     cellArrays.forEach((cellArray) => {
       if (!cellArray) {
         return;
       }
       const values = cellArray.getData();
+      console.log('squeezeOutputPoints-values', values);
       let numPts;
       let pointId;
       for (let i = 0; i < values.length; i += numPts + 1) {
@@ -616,8 +651,23 @@ function vtkClipClosedSurface(publicAPI, model) {
           values[i + j] = pointMap[pointId];
         }
       }
+      console.log('after-squeezeOutputPoints-values', cellArray.toJSON());
     });
-
+    /** cellToPolyIndex Cell对应Poly中的索引位置也就是索引的起点或者说是Cell组成的顶点个数的起点
+     *cellIdArray 用于存储哪些单元是要进行变色的  */ 
+    const CellIndexLen = cellIdArray.length // 变色的Cell长度
+    for(let i = 0;i<CellIndexLen;i++){
+      const index = cellToPolyIndex[cellIdArray[i]]; // 拿到Cell对应Poly的索引
+      const len = output.getPolys().toJSON().values[index] // Cell 组成长度
+      for(let j = 1 ;j<=len;j++){
+        const PointsIndex = output.getPolys().toJSON().values[index + j] // 获取到定点编号
+        // output.getPointData().toJSON().arrays[0].data.values[PointsIndex] = 0;
+        // outPointData.setTuple(PointsIndex, 0);
+        // console.log('squeezeOutputPoints-output', PointsIndex,output)
+      }
+    }
+    console.log('squeezeOutputPoints-outPointData', outPointData)
+    console.log('squeezeOutputPoints-output', output.toJSON())
     output.setPoints(newPoints);
   }
   // 数据的输入
@@ -640,16 +690,15 @@ function vtkClipClosedSurface(publicAPI, model) {
       model._idList.length = 0;
     }
 
-    // Get the input points===>获取顶点
+    // Get the input points===>获取输入点的相关值及函数方法
     const inputPoints = input.getPoints();
     let numPts = 0;
     let inputPointsType = VtkDataTypes.FLOAT;
     if (inputPoints) {
-      numPts = inputPoints.getNumberOfPoints();
+      numPts = inputPoints.getNumberOfPoints(); // 6649 顶点数
       inputPointsType = inputPoints.getDataType();
     }
-
-    // Force points to double precision, copy the point attributes
+    // Force points to double precision, copy the point attributes ==>仿照input新开辟一个新的变量范围==>是input中模型的坐标
     const points = vtkPoints.newInstance({
       size: numPts * 3,
       dataType: VtkDataTypes.DOUBLE,
@@ -657,17 +706,22 @@ function vtkClipClosedSurface(publicAPI, model) {
 
     const pointData = vtkDataSetAttributes.newInstance();
     let inPointData = null;
-
+    // 如果开启了passPointData则会获取到模型的标量属性
     if (model.passPointData) {
+      // 获取到标量数据
       inPointData = input.getPointData();
       // pointData.interpolateAllocate(inPointData, numPts, 0);
     }
 
     const point = [];
+    // ptId顶点
     for (let ptId = 0; ptId < numPts; ptId++) {
-      inputPoints.getPoint(ptId, point);
+      // 获取每顶点的坐标由ponit进行存储(覆盖掉之前的存储信息)
+      inputPoints.getPoint(ptId, point); // Get the coordinate of a point.
+      // 然后插入到points中
       points.setTuple(ptId, point);
       if (inPointData) {
+        // 能够给每个顶点设置FieldData=>复制备份
         // pointData.copyData(inPointData, ptId, ptId);
         pointData.passData(inPointData, ptId, ptId);
       }
@@ -679,7 +733,7 @@ function vtkClipClosedSurface(publicAPI, model) {
     // A temporary polydata for the contour lines that are triangulated
     const tmpContourData = vtkPolyData.newInstance();
 
-    // The cell scalars
+    // The cell scalars==>设置单元格标量
     let lineScalars;
     let polyScalars;
     let inputScalars;
@@ -692,24 +746,29 @@ function vtkClipClosedSurface(publicAPI, model) {
     // Make the colors to be used on the data
     let numberOfScalarComponents = 1;
     const colors = [
-      [0, 0, 0],
-      [0, 0, 0],
-      [0, 0, 0],
+      [0, 0, 0], // baseColor
+      [0, 0, 0], // clipColor
+      [0, 0, 0], // activePlaneColor
     ];
-    // 根据渲染模式进行选择
-    if (model.scalarMode === ScalarMode.COLORS) {
-      numberOfScalarComponents = 3;
-      createColorValues(
-        model.baseColor,
-        model.clipColor,
-        model.activePlaneColor,
-        colors
-      );
-    } else if (model.scalarMode === ScalarMode.LABELS) {
-      colors[0][0] = 0;
-      colors[1][0] = 1;
-      colors[2][0] = 2;
-    }
+
+    // 根据渲染模式进行选择==>仅仅设置切面的颜色
+    // if (model.scalarMode === ScalarMode.COLORS) {
+    //   numberOfScalarComponents = 3;
+    //   createColorValues(
+    //     model.baseColor,
+    //     model.clipColor,
+    //     model.activePlaneColor,
+    //     colors
+    //   );
+    // } else if (model.scalarMode === ScalarMode.LABELS) {
+    //   colors[0][0] = 0;
+    //   colors[1][0] = 1;
+    //   colors[2][0] = 2;
+    // }
+
+    // 硬传值进行颜色的设置==>BaseColor 黑色,
+    numberOfScalarComponents = 3;
+    createColorValues([0, 0, 0], [1, 0, 0], [0, 0, 0], colors);
 
     // This is set if we have to work with scalars. The input scalars
     // will be copied if they are unsigned char with 3 components, otherwise
@@ -718,12 +777,15 @@ function vtkClipClosedSurface(publicAPI, model) {
     // 获取到线段信息
     const inputLines = input.getLines();
     const numLines = inputLines?.getNumberOfCells() || 0;
-    console.log('numLines', inputLines.toJSON(), numLines);
+    // console.log('numLines', inputLines.toJSON(), numLines);
     const inputPolys = input.getPolys();
     const numPolys = inputPolys?.getNumberOfCells() || 0;
     const numStrips = input.getStrips()?.getNumberOfCells() || 0;
 
-    if (model.scalarMode !== ScalarMode.NONE) {
+    // 设置线标量==>存在才会设置Poly标量==>个人感觉不影响，因为当设置上PassPointData后仍会渲染上颜色
+    // ----------------- 修改判断条件 model.scalarMode !== ScalarMode.NONE -----------------
+    if (model.scalarMode) {
+      // 设置线标量
       lineScalars = vtkDataArray.newInstance({
         dataType: VtkDataTypes.UNSIGNED_CHAR,
         empty: true,
@@ -731,7 +793,7 @@ function vtkClipClosedSurface(publicAPI, model) {
         // values: new Uint8Array(numLines * 3),
         numberOfComponents: numberOfScalarComponents,
       });
-
+      // 获得线段标量
       const tryInputScalars = input.getCellData().getScalars();
       // Get input scalars if they are RGB color scalars
       if (
@@ -746,7 +808,7 @@ function vtkClipClosedSurface(publicAPI, model) {
         firstStripScalar = numVerts + numLines + numPolys;
       }
     }
-
+    // ----------------- END -----------------
     // Break the input lines into segments, generate scalars for lines
     let lines;
     if (numLines > 0) {
@@ -758,7 +820,7 @@ function vtkClipClosedSurface(publicAPI, model) {
       });
       breakPolylines(
         inputLines,
-        lines,
+        lines, // outputLines
         inputScalars,
         firstLineScalar,
         lineScalars,
@@ -770,12 +832,12 @@ function vtkClipClosedSurface(publicAPI, model) {
       });
     }
     // 将线进行破坏==>经过处理得到的lines属性
-    console.log('lines', lines.toJSON());
+    // console.log('lines', lines.toJSON());
 
     let polys = null;
     let polyMax = 3;
     if (numPolys > 0 || numStrips > 0) {
-      // If there are line scalars, then poly scalars are needed too
+      // If there are line scalars, then poly scalars are needed too  如果渲染颜色为零则会插入空白的Polyscalars
       if (lineScalars) {
         polyScalars = vtkDataArray.newInstance({
           dataType: VtkDataTypes.UNSIGNED_CHAR,
@@ -784,16 +846,17 @@ function vtkClipClosedSurface(publicAPI, model) {
           // values: new Uint8Array(inputPolys.getNumberOfCells(false) * 3),
           numberOfComponents: numberOfScalarComponents,
         });
+        console.log('polyScalars', polyScalars.toJSON());
       }
-      // 输出poly
+      // 输出poly==>复制一份新的，如果ScalarMode设置的是None则会设置上PolyScalars
       polys = vtkCellArray.newInstance();
       copyPolygons(
         inputPolys,
-        polys,
+        polys, // ==>复制一份inputPolys 到ploys中 outputPolys
         inputScalars,
         firstPolyScalar,
         polyScalars,
-        colors[0]
+        colors[0] // baseColor
       );
       // TODO: Support triangle strips
       breakTriangleStrips(
@@ -804,7 +867,6 @@ function vtkClipClosedSurface(publicAPI, model) {
         polyScalars,
         colors[0]
       );
-
       // Check if the input has polys and quads or just triangles
       polyMax = inputPolys.getCellSizes().reduce((a, b) => (a > b ? a : b), 0);
     }
@@ -816,18 +878,18 @@ function vtkClipClosedSurface(publicAPI, model) {
     });
     let newPolys = null;
     if (polys) {
+      // value为空状态
       newPolys = vtkCellArray.newInstance({
         dataType: polys.getDataType(),
         empty: true,
       });
     }
-
     // The line scalars, for coloring the outline
     let inLineData = vtkDataSetAttributes.newInstance();
     inLineData.copyScalarsOn();
     inLineData.setScalars(lineScalars);
 
-    // The poly scalars, for coloring the faces
+    // The poly scalars, for coloring the faces ==>设置上标量
     let inPolyData = vtkDataSetAttributes.newInstance();
     inPolyData.copyScalarsOn();
     inPolyData.setScalars(polyScalars);
@@ -841,30 +903,32 @@ function vtkClipClosedSurface(publicAPI, model) {
 
     const planes = model.clippingPlanes;
 
-    // Go through the clipping planes and clip the input with each plane
+    // Go through the clipping planes and clip the input with each plane==>遍历planes数组里面每一个切面隐函数
     for (let planeId = 0; planeId < planes.length; planeId++) {
       const plane = planes[planeId];
 
       let triangulate = 5;
+      // 判断是否是最后一个切面
       if (planeId === planes.length - 1) {
         triangulate = polyMax;
       }
-
+      // 当前切面编号是否与活动面编号匹配
       const active = planeId === model.activePlaneId;
 
       // Convert the plane into an easy-to-evaluate function
       const pc = plane.getNormal();
-      // OK to modify pc because vtkPlane.getNormal() returns a copy
+      // OK to modify pc because vtkPlane.getNormal() returns a copy==>计算出点在截面的里面还是外面==>通过计算出来的值的正负来判断
       pc[3] = -vtkMath.dot(pc, plane.getOrigin());
 
-      // Create the clip scalars by evaluating the plane at each point
+      // Create the clip scalars by evaluating the plane at each point==>获取到模型的顶点个数
       const numPoints = points.getNumberOfPoints();
-
+      console.log('numPoints', numPoints);
       // The point scalars, needed for clipping (not for the output!)
       const pointScalars = vtkDataArray.newInstance({
         dataType: VtkDataTypes.DOUBLE,
         size: numPoints,
       });
+      // 设置标量信息
       const pointScalarsData = pointScalars.getData();
       const pointsData = points.getData();
       let i = 0;
@@ -875,7 +939,7 @@ function vtkClipClosedSurface(publicAPI, model) {
           pointsData[i++] * pc[2] +
           pc[3];
       }
-
+      console.log('after-Plane-pointScalarsData', pointScalars.toJSON());
       // Prepare the output scalars
       // outLineData.copyAllocate(inLineData, 0, 0);
       // outPolyData.copyAllocate(inPolyData, 0, 0);
@@ -887,14 +951,14 @@ function vtkClipClosedSurface(publicAPI, model) {
       clipLines(
         points,
         pointScalars,
-        pointData,
+        pointData, // 获取到之前VTP的标量数据
         edgeLocator,
-        lines,
-        newLines,
-        inLineData,
-        outLineData
+        lines, // inputLines
+        newLines, // outLines
+        inLineData, // inputLinesData
+        outLineData // outLinesData
       );
-      console.log('clipLines-lines', outLineData.toJSON());
+
       // Clip the polys
       if (polys) {
         // Get the number of lines remaining after the clipping
@@ -906,20 +970,21 @@ function vtkClipClosedSurface(publicAPI, model) {
           pointData,
           edgeLocator,
           triangulate,
-          polys,
-          newPolys,
-          newLines,
-          inPolyData,
+          polys, // inputPolys
+          newPolys, // outputPolys
+          newLines, // outputLines
+          inPolyData, // inCellData
           outPolyData,
           outLineData
         );
-
+        console.log('Plane-clipLines-Polys', outPolyData.toJSON());
         // Add scalars for the newly-created contour lines
         let scalars = outLineData.getScalars();
-
+        // 处理Line
         if (scalars) {
-          // Set the color to the active color if plane is active
-          const color = colors[1 + (active ? 1 : 0)];
+          // Set the color to the active color if plane is active ==> 查看planeId是否与activePlaneId对应 不对应则都渲染从成切面颜色
+          // const color = colors[1 + (active ? 1 : 0)];
+          const color = [255, 0, 0];
           const activeColor = colors[2];
           const numNewLines = newLines.getNumberOfCells();
 
@@ -937,7 +1002,7 @@ function vtkClipClosedSurface(publicAPI, model) {
           }
         }
 
-        // Generate new polys from the cut lines
+        //* * Generate new polys from the cut lines 33**
         let cellId = newPolys.getNumberOfCells();
         const numClipAndContourLines = newLines.getNumberOfCells();
 
@@ -946,34 +1011,44 @@ function vtkClipClosedSurface(publicAPI, model) {
         tmpContourData.setLines(newLines);
         tmpContourData.buildCells();
 
+        // 三角化之后会Poly整体上升
         triangulateContours(
           tmpContourData,
           numClipLines,
           numClipAndContourLines - numClipLines,
-          newPolys,
+          newPolys, // outputPoly
           pc
         );
-
-        // Add scalars for the newly-created polys
+        console.log('clip-newPolys', newPolys.toJSON());
+        // Add scalars for the newly-created polys ==>这里所创造出的新面就是切面
         scalars = outPolyData.getScalars();
-
+        console.log('Plane-outPolyData.getScalars()', scalars.toJSON());
+        // 处理Poly
         if (scalars) {
-          const color = colors[1 + (active ? 1 : 0)];
-
-          const numCells = newPolys.getNumberOfCells();
+          // 存在疑问 为什么Size与value的数值不匹配
+          // const color = colors[1 + (active ? 1 : 0)];
+          // 改变了切面的颜色===>numCells 及cellID是存储切掉的新Poly的
+          const color = [255, 0, 255];
+          const numCells = newPolys.getNumberOfCells(); // 获取到最新的Polys 的数量
+          console.log('Plane-numCells', numCells, 'cellId', cellId);
           if (numCells > cellId) {
-            // The insert allocates space up to numCells - 1
-            scalars.insertTuple(numCells - 1, color);
+            // The insert allocates space up to numCells - 1==>在给定索引处插入给定元组
+            scalars.insertTuple(numCells - 1, color); // SIZE 扩充numCells - 1的空间(重新设置)
             for (; cellId < numCells; cellId++) {
-              scalars.setTuple(cellId, color);
+              // 设置从给定索引开始的给定元组
+              scalars.setTuple(cellId, color); // 若cellId === 28 =>28*3 = 84 从数组84索引开始插入颜色标量==>插入到Celldata中
             }
           }
+          console.log(
+            'Plane-deal-outPolyData.getScalars()',
+            outPolyData.getScalars().toJSON()
+          );
         }
+
 
         // Add scalars to any diagnostic lines that added by
         // triangulateContours(). In usual operation, no lines are added.
         scalars = outLineData.getScalars();
-
         if (scalars) {
           const color = [0, 255, 255];
           const numCells = newLines.getNumberOfCells();
@@ -990,35 +1065,49 @@ function vtkClipClosedSurface(publicAPI, model) {
           }
         }
       }
-
+      console.log('swap-before-poly-newpoly.', [
+        newPolys.toJSON(),
+        polys.toJSON(),
+        outPolyData.toJSON(),
+        inPolyData.toJSON(),
+      ]);
       // Swap the lines, points, etcetera: old output becomes new input
       [lines, newLines] = [newLines, lines];
       newLines.initialize();
 
       if (polys) {
+        // 将数据进行交换，之前的polys是旧输出，将newPolys替换polys(现在polys的值是newPolys)
         [polys, newPolys] = [newPolys, polys];
         newPolys.initialize();
       }
-
+      // console.log('swap-after-poly-newpoly.', [
+      //   newPolys.toJSON(),
+      //   polys.toJSON(),
+      // ]);
       [inLineData, outLineData] = [outLineData, inLineData];
       outLineData.initialize();
 
       [inPolyData, outPolyData] = [outPolyData, inPolyData];
       outPolyData.initialize();
+      // console.log('swap-after-PolyData-PolyData', [
+      //   outPolyData.toJSON(),
+      //   inPolyData.toJSON(),
+      // ]);
     }
 
     // Get the line scalars
     const scalars = inLineData.getScalars();
-    console.log('generateOutline', model.generateOutline); // false没有设置Lines
+    // console.log('generateOutline', model.generateOutline); // false没有设置Lines
     if (model.generateOutline) {
       output.setLines(lines);
     } else if (scalars) {
       scalars.initialize();
     }
-    console.log('model.generateFaces', model.generateFaces); // true
-    if (model.generateFaces) {
-      output.setPolys(polys);
 
+    // console.log('model.generateFaces', model.generateFaces); // true
+    if (model.generateFaces) {
+      // Arrays for storing the clipped polys
+      output.setPolys(polys); // 设置Poly结构
       if (polys && scalars) {
         const pScalars = inPolyData.getScalars();
         const m = scalars.getNumberOfTuples();
@@ -1059,9 +1148,12 @@ function vtkClipClosedSurface(publicAPI, model) {
     }
 
     // Finally, store the points in the output
+    // 这里的output是存在CellData作为标量颜色继续处理 / points已经是筛选过剩下的模型点/
+    // 需要知道输入裁剪了哪些点==>或者说outpoutCellData中哪些颜色是渲染[255,0,255]
     squeezeOutputPoints(output, points, pointData, inputPointsType);
     // TODO: Check
     // output.squeeze();
+    console.log('output', output.toJSON()); // 如果是ScalarMode.COLORS 不开启pointData情况下，正常设置颜色==>将颜色设置到 cellData中
     outData[0] = output;
   };
 

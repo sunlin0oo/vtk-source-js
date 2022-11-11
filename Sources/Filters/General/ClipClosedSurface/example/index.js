@@ -89,11 +89,11 @@ function update() {
   });
   planes.push(plane2);
 
-  const plane3 = vtkPlane.newInstance({
-    origin: center,
-    normal: [0.0, 0.0, 1.0], // z轴
-  });
-  planes.push(plane3);
+  // const plane3 = vtkPlane.newInstance({
+  //   origin: center,
+  //   normal: [0.0, 0.0, 1.0], // z轴
+  // });
+  // planes.push(plane3);
   console.time('Filter');
   const filter = vtkClipClosedSurface.newInstance({
     clippingPlanes: planes, // 设定一组用来裁剪的隐函数平面集合
@@ -110,14 +110,14 @@ function update() {
 
   // filter.setInputConnection(source);
   filter.setInputData(source);
-  // filter.setScalarModeToColors();
-  filter.setScalarModeToNone();
+  filter.setScalarModeToColors();
+  // filter.setScalarModeToNone();
   filter.update();
   const filterData = filter.getOutputData();
   console.timeEnd('Filter');
   console.log('filterData', filterData.toJSON());
   mapper.setInputData(filterData);
-  actor.getProperty().setRepresentation(2);
+  actor.getProperty().setRepresentation(1);
 
   // -----------------------------------------------------------
   console.time('render');
