@@ -30,7 +30,7 @@
   "main": "./dist/umd/vtk.js",
   "module": "./dist/esm/index.js",
   "dependencies": {
-    "@babel/runtime": "7.17.9",
+    "@babel/runtime": "^7.17.9",
     "commander": "9.2.0",
     "d3-scale": "4.0.2",
     "fflate": "0.7.3",
@@ -48,7 +48,7 @@
   "devDependencies": {
     "@babel/core": "7.17.10",
     "@babel/eslint-parser": "7.17.0",
-    "@babel/plugin-transform-runtime": "7.17.10",
+    "@babel/plugin-transform-runtime": "^7.17.10",
     "@babel/preset-env": "7.17.10",
     "@commitlint/cli": "16.2.4",
     "@commitlint/config-conventional": "16.2.4",
