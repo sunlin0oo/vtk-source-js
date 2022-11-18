@@ -46,7 +46,7 @@ function getPickState(renderer) {
 }
 
 function vtkOpenGLPolyDataMapper(publicAPI, model) {
-  console.log('进入vtkOpenGLPolyDataMapper');
+  // console.log('进入vtkOpenGLPolyDataMapper');
   // Set our className
   model.classHierarchy.push('vtkOpenGLPolyDataMapper');
 
@@ -100,7 +100,7 @@ function vtkOpenGLPolyDataMapper(publicAPI, model) {
   };
 
   publicAPI.buildShaders = (shaders, ren, actor) => {
-    console.log('我BuildShader');
+    // console.log('我BuildShader');
     publicAPI.getShaderTemplate(shaders, ren, actor);
 
     // apply any renderPassReplacements
@@ -155,11 +155,11 @@ function vtkOpenGLPolyDataMapper(publicAPI, model) {
   };
 
   publicAPI.getShaderTemplate = (shaders, ren, actor) => {
-    console.log('我执行了getShaderTemplate');
-    console.log(
-      'model.renderable.getViewSpecificProperties()',
-      model.renderable.getViewSpecificProperties()
-    );
+    // console.log('我执行了getShaderTemplate');
+    // console.log(
+    //   'model.renderable.getViewSpecificProperties()',
+    //   model.renderable.getViewSpecificProperties()
+    // );
     const openGLSpecProp = model.renderable.getViewSpecificProperties().OpenGL;
 
     let vertexShaderCode = vtkPolyDataVS;
@@ -1193,7 +1193,7 @@ function vtkOpenGLPolyDataMapper(publicAPI, model) {
   };
 
   publicAPI.setMapperShaderParameters = (cellBO, ren, actor) => {
-    console.log('我执行了setMapperShaderParameters', model);
+    // console.log('我执行了setMapperShaderParameters', model);
     // Now to update the VAO too, if necessary.
     if (cellBO.getProgram().isUniformUsed('PrimitiveIDOffset')) {
       cellBO
@@ -1216,10 +1216,10 @@ function vtkOpenGLPolyDataMapper(publicAPI, model) {
       );
 
       if (cellBO.getProgram().isAttributeUsed('vertexMC')) {
-        console.log(
-          'cellBO.getProgram().isAttributeUsed(vertexMC)',
-          cellBO.getProgram().isAttributeUsed('vertexMC')
-        ); // 这里的vertex MC === true
+        // console.log(
+        //   'cellBO.getProgram().isAttributeUsed(vertexMC)',
+        //   cellBO.getProgram().isAttributeUsed('vertexMC')
+        // ); // 这里的vertex MC === true
         if (
           !cellBO
             .getVAO()
@@ -1263,6 +1263,7 @@ function vtkOpenGLPolyDataMapper(publicAPI, model) {
       }
 
       model.renderable.getCustomShaderAttributes().forEach((attrName, idx) => {
+        console.log('attrName', attrName);
         if (cellBO.getProgram().isAttributeUsed(`${attrName}MC`)) {
           if (
             !cellBO
@@ -1737,7 +1738,7 @@ function vtkOpenGLPolyDataMapper(publicAPI, model) {
   };
 
   publicAPI.renderPieceDraw = (ren, actor) => {
-    console.log('我执行了renderPieceDraw');
+    // console.log('我执行了renderPieceDraw');
     const representation = actor.getProperty().getRepresentation();
 
     const drawSurfaceWithEdges =
@@ -1792,7 +1793,7 @@ function vtkOpenGLPolyDataMapper(publicAPI, model) {
     // if (ren.getRenderWindow().checkAbortStatus()) {
     //   return;
     // }
-    console.log('我执行了renderPiece');
+    // console.log('我执行了renderPiece');
     publicAPI.invokeEvent(StartEvent);
     if (!model.renderable.getStatic()) {
       model.renderable.update();

@@ -240,7 +240,7 @@ function vtkOpenGLCellArrayBufferObject(publicAPI, model) {
       caboCount += countFunc(array[index], array);
       index += array[index] + 1;
     }
-    console.log('执行了CellArrayBuffer');
+    // console.log('执行了CellArrayBuffer');
     let packedUCVBO = null;
     const packedVBO = new Float32Array(caboCount * model.blockSize);
     if (colorData) {

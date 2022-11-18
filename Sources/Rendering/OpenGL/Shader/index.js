@@ -9,12 +9,12 @@ const { vtkErrorMacro } = macro;
 // ----------------------------------------------------------------------------
 
 function vtkShader(publicAPI, model) {
-  console.log('我进入了vtkShader');
+  // console.log('我进入了vtkShader');
   // Set our className
   model.classHierarchy.push('vtkShader');
 
   publicAPI.compile = () => {
-    console.log('我进行了编译');
+    // console.log('我进行了编译');
     let stype = model.context.VERTEX_SHADER;
 
     if (

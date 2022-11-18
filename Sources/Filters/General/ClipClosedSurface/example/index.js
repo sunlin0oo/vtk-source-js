@@ -16,7 +16,7 @@ import vtkXMLPolyDataReader from 'vtk.js/Sources/IO/XML/XMLPolyDataReader';
 import vtkPolyData from 'vtk.js/Sources/Common/DataModel/PolyData';
 import vtkDataArray from 'vtk.js/Sources/Common/Core/DataArray';
 import HttpDataAccessHelper from 'vtk.js/Sources/IO/Core/DataAccessHelper/HttpDataAccessHelper';
-import displacementData from '../../../../../Data/JSON/displacement.json';
+// import displacementData from '../../../../../Data/JSON/displacement.json';
 
 const fileName = 'beam.vtp';
 // ----------------------------------------------------------------------------
@@ -24,7 +24,7 @@ const fileName = 'beam.vtp';
 // ----------------------------------------------------------------------------
 
 const reader = vtkXMLPolyDataReader.newInstance();
-console.log('displacementData', displacementData);
+// console.log('displacementData', displacementData);
 const actor = vtkActor.newInstance();
 const mapper = vtkMapper.newInstance({ interpolateScalarBeforeMapping: true });
 actor.setMapper(mapper);
@@ -61,7 +61,7 @@ function update() {
   // --------------------- END ---------------------
   const sourcePoly = reader.getOutputData(0);
   // --------------------- 设置output 仅有外边框的 ---------------------
-  const source = reader.getOutputData(2);
+  const source = reader.getOutputData(0);
   console.log('sourcePoly', source.toJSON());
   const inputLines = sourcePoly.getLines();
   source.getPolys().setData(inputLines.getData());
@@ -77,24 +77,24 @@ function update() {
   ];
 
   const planes = [];
-  // const plane1 = vtkPlane.newInstance({
-  //   origin: center,
-  //   normal: [1.0, 0.0, 0.0], // x轴
-  // });
-  // planes.push(plane1);
-
-  const plane2 = vtkPlane.newInstance({
+  const plane1 = vtkPlane.newInstance({
     origin: center,
-    normal: [0.0, 1.0, 0.0], // y轴
+    normal: [1.0, 0.0, 0.0], // x轴
   });
-  planes.push(plane2);
+  planes.push(plane1);
+
+  // const plane2 = vtkPlane.newInstance({
+  //   origin: center,
+  //   normal: [0.0, 1.0, 0.0], // y轴
+  // });
+  // planes.push(plane2);
 
   // const plane3 = vtkPlane.newInstance({
   //   origin: center,
   //   normal: [0.0, 0.0, 1.0], // z轴
   // });
   // planes.push(plane3);
-  console.time('Filter');
+  // console.time('Filter');
   const filter = vtkClipClosedSurface.newInstance({
     clippingPlanes: planes, // 设定一组用来裁剪的隐函数平面集合
     activePlaneId: 2, // 如果设置了ActivePlaneId，则为通过使用ActivePlane剪裁生成的任何新几何体设置颜色。 设定当前活动平面ID为2==>对应数组的索引
@@ -117,10 +117,10 @@ function update() {
   console.timeEnd('Filter');
   console.log('filterData', filterData.toJSON());
   mapper.setInputData(filterData);
-  actor.getProperty().setRepresentation(1);
+  actor.getProperty().setRepresentation(2);
 
   // -----------------------------------------------------------
-  console.time('render');
+  // console.time('render');
   renderer.resetCamera();
   renderWindow.render();
   renderer.addActor(actor);

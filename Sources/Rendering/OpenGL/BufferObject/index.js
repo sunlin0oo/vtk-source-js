@@ -62,7 +62,7 @@ function vtkOpenGLBufferObject(publicAPI, model) {
       internalHandle = model.context.createBuffer();
       internalType = type;
     }
-    console.log('internalType', internalType);
+    // console.log('internalType', internalType);
     return convertType(internalType) === objectTypeGL;
   };
 
@@ -70,7 +70,7 @@ function vtkOpenGLBufferObject(publicAPI, model) {
     // buffer, size, type
     // 1.创建缓冲区对象==>一个缓冲ID生成一个VBO对象
     const alreadyGenerated = publicAPI.generateBuffer(type);
-    console.log('alreadyGenerated', alreadyGenerated);
+    // console.log('alreadyGenerated', alreadyGenerated);
     if (!alreadyGenerated) {
       error = 'Trying to upload array buffer to incompatible buffer.';
       return false;
@@ -91,11 +91,11 @@ function vtkOpenGLBufferObject(publicAPI, model) {
     if (!internalHandle) {
       return false;
     }
-    console.log(
-      'BufferObject中internalHandle',
-      internalHandle,
-      convertType(internalType)
-    );
+    // console.log(
+    //   'BufferObject中internalHandle',
+    //   internalHandle,
+    //   convertType(internalType)
+    // );
 
     model.context.bindBuffer(convertType(internalType), internalHandle);
     return true;

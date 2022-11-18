@@ -383,7 +383,7 @@ function vtkXMLReader(publicAPI, model) {
     fetchData(model.url, option).then(publicAPI.parseAsArrayBuffer);
 
   publicAPI.parseAsArrayBuffer = (arrayBuffer, flag) => {
-    console.log('parseAsArrayBuffer执行');
+    // console.log('parseAsArrayBuffer执行');
     if (!arrayBuffer) {
       return false;
     }

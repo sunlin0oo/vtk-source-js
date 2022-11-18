@@ -1,3 +1,5 @@
+/* eslint-disable import/no-unresolved */
+/* eslint-disable array-callback-return */
 /* eslint-disable no-unused-vars */
 /* eslint-disable import/prefer-default-export */
 /* eslint-disable import/no-extraneous-dependencies */
@@ -6,7 +8,7 @@ import 'vtk.js/Sources/favicon';
 
 // Load the rendering pieces we want to use (for both WebGL and WebGPU)
 import 'vtk.js/Sources/Rendering/Profiles/Geometry';
-
+import lodash from 'lodash';
 import { formatBytesToProperUnit, debounce } from 'vtk.js/Sources/macros';
 import HttpDataAccessHelper from 'vtk.js/Sources/IO/Core/DataAccessHelper/HttpDataAccessHelper';
 import vtkActor from 'vtk.js/Sources/Rendering/Core/Actor';
@@ -19,10 +21,7 @@ import vtkMapper from 'vtk.js/Sources/Rendering/Core/Mapper';
 import vtkURLExtract from 'vtk.js/Sources/Common/Core/URLExtract';
 import vtkXMLPolyDataReader from 'vtk.js/Sources/IO/XML/XMLPolyDataReader';
 import vtkFPSMonitor from 'vtk.js/Sources/Interaction/UI/FPSMonitor';
-// import vtkPolyDataContour from 'vtk.js/Sources/Filters/General/vtkPolyDataContour';
 
-import vtkPlane from 'vtk.js/Sources/Common/DataModel/Plane';
-import vtkClipClosedSurface from 'vtk.js/Sources/Filters/General/ClipClosedSurface';
 // Force DataAccessHelper to have access to various data source
 import 'vtk.js/Sources/IO/Core/DataAccessHelper/HtmlDataAccessHelper';
 import 'vtk.js/Sources/IO/Core/DataAccessHelper/JSZipDataAccessHelper';
@@ -34,6 +33,7 @@ import {
 
 import style from './GeometryViewer.module.css';
 import icon from '../../../Documentation/content/icon/favicon-96x96.png';
+import displacementData from '../../../Data/JSON/displacement_x.json';
 
 let autoInit = true;
 let background = [0, 0, 0];
@@ -46,7 +46,6 @@ global.pipeline = {};
 
 // Process arguments from URL
 const userParams = vtkURLExtract.extractURLParameters();
-
 // Background handling
 if (userParams.background) {
   background = userParams.background.split(',').map((s) => Number(s));
@@ -55,12 +54,13 @@ const selectorClass =
   background.length === 3 && background.reduce((a, b) => a + b, 0) < 1.5
     ? style.dark
     : style.light;
-
+// 设置颜色映射表名称
 // lut
 const lutName = userParams.lut || 'erdc_rainbow_bright';
-
+console.log('lutName', lutName);
 // field
 const field = userParams.field || '';
+console.log('field', field);
 
 // camera
 function updateCamera(camera) {
@@ -116,9 +116,123 @@ function emptyContainer(container) {
     container.removeChild(container.firstChild);
   }
 }
+// 每次改变视角都会重新执行自定义函数进行重定义渲染
+function customShader(mapper, offsetVBO) {
+  console.log('Custom-执行');
+  // ---------------------------初始化开始---------------------------
+  // 初始化==>与polydataMapper进行关联==>renderable.getViewSpecificProperties()
+  const mapperViewProp = mapper.getViewSpecificProperties(); // 对象
+  console.log('Custom-mapperViewProp', mapperViewProp);
+  mapperViewProp.OpenGL = {
+    ShaderReplacements: [],
+  };
+  console.log('Custom-mapperViewProp.OpenGL::', mapperViewProp.OpenGL);
+  mapperViewProp.addShaderReplacements = (
+    _shaderType, // 需要编辑的shader类型
+    _originalValue, // 要替换的值
+    _replaceFirst, // true:在默认值之前完成替换，false==>反之之后完成替换
+    _replacementValue, // 替换值
+    _replaceAll // true:定义只需要替换第一次出现,false:全部替换
+  ) => {
+    mapperViewProp.OpenGL.ShaderReplacements.push({
+      shaderType: _shaderType,
+      originalValue: _originalValue,
+      replaceFirst: _replaceFirst,
+      replacementValue: _replacementValue,
+      replaceAll: _replaceAll,
+    });
+  };
+  // ---------------------------初始化结束---------------------------
+
+  // --------------------------uniform1f添加--------------------------
+  const uniform1f = 1.0;
+  // 进行函数的回调===>进行参数的调用
+  mapperViewProp.ShadersCallbacks = [];
+
+  // 添加形变系数作为Uniformi属性
+  mapperViewProp.ShadersCallbacks.push({
+    // ShaderProgam中进行查阅==>什么情况传什么样的参数
+    userData: uniform1f,
+    callback(userData, cellBO, ren, _actor) {
+      console.log('Custom-cellBO', cellBO);
+      const program = cellBO.getProgram();
+      console.log('Custom-program', program);
+      program.setUniformf('deformation', userData);
+    },
+  });
+  console.log(
+    'Custom-mapperViewProp.ShadersCallbacks',
+    mapperViewProp.ShadersCallbacks
+  );
+  // --------------------------uniform1f添加结束--------------------------
+
+  // --------------------------着色器替换部分--------------------------
+  mapperViewProp.addShaderReplacements(
+    'Vertex',
+    '//VTK::PositionVC::Dec',
+    true,
+    '//VTK::PositionVC::Dec\nuniform float deformation;\n',
+    false
+  );
+
+  mapperViewProp.addShaderReplacements(
+    'Vertex',
+    '//VTK::PositionVC::Dec',
+    true,
+    // '//VTK::PositionVC::Dec\nlayout(location = 1) in vec4 vertexOffsetMC;\n',
+    '//VTK::PositionVC::Dec\nattribute vec4 vertexOffsetMC;\n',
+    false
+  );
+
+  mapperViewProp.addShaderReplacements(
+    'Vertex',
+    '//VTK::PositionVC::Impl', // Implementation of shader code for handling normals  用于处理法线着色器的实现==>调用变量用这个
+    true,
+    '//VTK::PositionVC::Impl\n  gl_Position = MCPCMatrix * (vertexMC + vertexOffsetMC * deformation) ;\n', // 未将vertexOffsetMC传入,这里的数值参数仍是坐标值
+    false
+  );
+  // --------------------------着色器源码替换部分结束--------------------------
+
+  // --------------------------attribute添加--------------------------
+  // 添加偏移量作为attribute属性
+  mapperViewProp.ShadersCallbacks.push({
+    userData: offsetVBO,
+    // 修改源码。==>callbakc函数添加属性model
+    callback(userData, cellBO, ren, _actor, model) {
+      console.log('Custom-回调函数中model', model);
+      const gl = model.context;
+      // 创建缓冲区对象
+      model.vertexBuffer = gl.createBuffer();
+      console.log('Custom-model.vertexBuffer', model.vertexBuffer);
+      // 将缓冲区对象绑定到目标
+      gl.bindBuffer(gl.ARRAY_BUFFER, model.vertexBuffer);
+      // console.log(userData);
+      // 向缓冲区中写入数据
+      gl.bufferData(gl.ARRAY_BUFFER, userData, gl.STATIC_DRAW);
+      // ----------------- End -----------------
+
+      // ----------------- 启用顶点坐标数据数组(VAO)开启attribute变量-----------------
+      console.log('Custom-回调函数中cellBO.getCABO()', cellBO.getCABO());
+      if (cellBO.getProgram().isAttributeUsed('vertexOffsetMC')) {
+        model.handleProgram = cellBO.getProgram().getHandle();
+        const paraIndex = gl.getAttribLocation(
+          model.handleProgram,
+          'vertexOffsetMC'
+        );
+        gl.enableVertexAttribArray(paraIndex);
+        // 将数据传递到顶点属性中==>具体是从哪个VBO（程序中可以有多个VBO）获取则是通过在调用glVetexAttribPointer时绑定到GL_ARRAY_BUFFER的VBO决定的
+        gl.vertexAttribPointer(paraIndex, 3, model.context.FLOAT, false, 12, 0);
+      } else {
+        console.log('Custom-未进行设置');
+      }
+      // -----------------End-----------------
+    },
+  });
+  // --------------------------attribute添加结束--------------------------
+}
 
 // ----------------------------------------------------------------------------
-
+// 创建视图
 function createViewer(container) {
   fullScreenRenderWindow = vtkFullScreenRenderWindow.newInstance({
     background,
@@ -132,7 +246,7 @@ function createViewer(container) {
   container.appendChild(rootControllerContainer);
   container.appendChild(addDataSetButton);
 
-  scalarBarActor = vtkScalarBarActor.newInstance();
+  scalarBarActor = vtkScalarBarActor.newInstance(); // 右侧颜色条
   renderer.addActor(scalarBarActor);
 
   if (userParams.fps) {
@@ -149,17 +263,19 @@ function createViewer(container) {
 }
 
 // ----------------------------------------------------------------------------
-
+// 创建管道，显示渲染模式
 function createPipeline(fileName, fileContents) {
   // Create UI
   const presetSelector = document.createElement('select');
   presetSelector.setAttribute('class', selectorClass);
+  // 列举预设可选颜色的列表
+  console.log('vtkColorMaps.rgbPresetNames', vtkColorMaps.rgbPresetNames);
   presetSelector.innerHTML = vtkColorMaps.rgbPresetNames
     .map(
       (name) =>
         `<option value="${name}" ${
           lutName === name ? 'selected="selected"' : ''
-        }>${name}</option>`
+        } name="${name}">${name}</option>`
     )
     .join('');
 
@@ -168,69 +284,35 @@ function createPipeline(fileName, fileContents) {
   representationSelector.innerHTML = [
     'Hidden',
     'Points',
-    'Wireframe',
+    'Mesh',
     'Surface',
-    'Surface with Edge',
+    'Surface with Mesh',
+    'Wireframe',
+    'WireframewithSurface',
   ]
     .map(
       (name, idx) =>
-        `<option value="${idx === 0 ? 0 : 1}:${idx < 4 ? idx - 1 : 2}:${
-          idx === 4 ? 1 : 0
-        }">${name}</option>`
+        `<option value="${idx === 0 ? 0 : 1}:
+        ${idx < 4 ? idx - 1 : 2}:
+        ${idx === 4 ? 1 : 0}:
+        ${name}">${name}</option>`
     )
     .join('');
-  representationSelector.value = '1:2:0';
-
+  representationSelector.value = '1:2:0:Surface';
+  // 颜色的选择
   const colorBySelector = document.createElement('select');
   colorBySelector.setAttribute('class', selectorClass);
 
   const componentSelector = document.createElement('select');
   componentSelector.setAttribute('class', selectorClass);
   componentSelector.style.display = 'none';
-
-  const opacityLabel = document.createElement('label');
-  opacityLabel.setAttribute('class', selectorClass);
-  opacityLabel.style.textAlign = 'right';
-  opacityLabel.innerText = 'Opacity';
+  // 透明度
   const opacitySelector = document.createElement('input');
   opacitySelector.setAttribute('class', selectorClass);
   opacitySelector.setAttribute('type', 'range');
   opacitySelector.setAttribute('value', '100');
   opacitySelector.setAttribute('max', '100');
   opacitySelector.setAttribute('min', '1');
-
-  const normalX = document.createElement('label');
-  normalX.setAttribute('class', selectorClass);
-  normalX.style.textAlign = 'right';
-  normalX.innerText = 'Normal X';
-  const normalSelectorX = document.createElement('input');
-  normalSelectorX.setAttribute('class', selectorClass);
-  normalSelectorX.setAttribute('type', 'number');
-  normalSelectorX.setAttribute('value', '0');
-  normalSelectorX.setAttribute('max', '1');
-  normalSelectorX.setAttribute('min', '-1');
-
-  const normalY = document.createElement('label');
-  normalY.setAttribute('class', selectorClass);
-  normalY.style.textAlign = 'right';
-  normalY.innerText = 'Normal Y';
-  const normalSelectorY = document.createElement('input');
-  normalSelectorY.setAttribute('class', selectorClass);
-  normalSelectorY.setAttribute('type', 'number');
-  normalSelectorY.setAttribute('value', '1');
-  normalSelectorY.setAttribute('max', '1');
-  normalSelectorY.setAttribute('min', '-1');
-
-  const normalZ = document.createElement('label');
-  normalZ.setAttribute('class', selectorClass);
-  normalZ.style.textAlign = 'right';
-  normalZ.innerText = 'Normal Z';
-  const normalSelectorZ = document.createElement('input');
-  normalSelectorZ.setAttribute('class', selectorClass);
-  normalSelectorZ.setAttribute('type', 'number');
-  normalSelectorZ.setAttribute('value', '0');
-  normalSelectorZ.setAttribute('max', '1');
-  normalSelectorZ.setAttribute('min', '-1');
 
   const labelSelector = document.createElement('label');
   labelSelector.setAttribute('class', selectorClass);
@@ -240,14 +322,6 @@ function createPipeline(fileName, fileContents) {
   immersionSelector.setAttribute('class', selectorClass);
   immersionSelector.innerHTML = 'Start AR';
 
-  const contourLabel = document.createElement('label');
-  contourLabel.setAttribute('class', selectorClass);
-  contourLabel.style.textAlign = 'right';
-  contourLabel.innerText = 'Contour';
-  const contourSelector = document.createElement('input');
-  contourSelector.setAttribute('class', selectorClass);
-  contourSelector.setAttribute('type', 'number');
-
   const controlContainer = document.createElement('div');
   controlContainer.setAttribute('class', style.control);
   controlContainer.appendChild(labelSelector);
@@ -255,17 +329,7 @@ function createPipeline(fileName, fileContents) {
   controlContainer.appendChild(presetSelector);
   controlContainer.appendChild(colorBySelector);
   controlContainer.appendChild(componentSelector);
-  controlContainer.appendChild(opacityLabel);
   controlContainer.appendChild(opacitySelector);
-  controlContainer.appendChild(contourLabel);
-  controlContainer.appendChild(contourSelector);
-
-  controlContainer.appendChild(normalX);
-  controlContainer.appendChild(normalSelectorX);
-  controlContainer.appendChild(normalY);
-  controlContainer.appendChild(normalSelectorY);
-  controlContainer.appendChild(normalZ);
-  controlContainer.appendChild(normalSelectorZ);
 
   if (
     navigator.xr !== undefined &&
@@ -276,56 +340,103 @@ function createPipeline(fileName, fileContents) {
   }
   rootControllerContainer.appendChild(controlContainer);
 
-  // VTK pipeline
+  // VTK pipeline==>初始化
+  // 读取文件
   const vtpReader = vtkXMLPolyDataReader.newInstance();
+  console.log('vtpReader', vtpReader);
+  // 若是相同的数据输入则只会执行一次
   vtpReader.parseAsArrayBuffer(fileContents, true);
-
   const lookupTable = vtkColorTransferFunction.newInstance();
-  // console.log(
-  //   'Poly + Line::',
-  //   vtpReader.getOutputData(0).toJSON(),
-  //   'Line::',
-  //   vtpReader.getOutputData(1).toJSON(),
-  //   'Poly:::',
-  //   vtpReader.getOutputData(2).toJSON()
-  // );
-  const source = vtpReader.getOutputData(2);
-  const mapper = vtkMapper.newInstance({
-    interpolateScalarsBeforeMapping: true,
+  const lookupTableLine = vtkColorTransferFunction.newInstance();
+  // const source = vtpReader.getOutputData(0);
+  const sourceLine = vtpReader.getOutputData(1);
+  const sourcePoly = vtpReader.getOutputData(2);
+  console.log('source', sourcePoly.toJSON());
+  console.log('sourceLine', sourceLine);
+  console.log('sourcePoly', sourcePoly);
+  const mapperLine = vtkMapper.newInstance({
+    interpolateScalarsBeforeMapping: false,
     useLookupTableScalarRange: true,
-    lookupTable,
+    lookupTable: lookupTableLine,
     scalarVisibility: false,
   });
-
-  const actor = vtkActor.newInstance();
-  const scalars = source.getPointData().getScalars();
+  const actorLine = vtkActor.newInstance();
+  const mapperPoly = vtkMapper.newInstance({
+    interpolateScalarsBeforeMapping: false,
+    useLookupTableScalarRange: true,
+    lookupTable,
+    scalarVisibility: true,
+  });
+  const actorPoly = vtkActor.newInstance();
+  // 会让模型表面的数据进行描述
+  // actor.getProperty().setEdgeVisibility(true);
+  // 获取到对应数据的标量
+  const scalars = sourcePoly.getPointData().getScalars();
+  console.log('scalars', scalars);
   const dataRange = [].concat(scalars ? scalars.getRange() : [0, 1]);
   let activeArray = vtkDataArray;
 
   // --------------------------------------------------------------------
   // Color handling
   // --------------------------------------------------------------------
-
+  // 应用预设的颜色
   function applyPreset() {
     const preset = vtkColorMaps.getPresetByName(presetSelector.value);
     lookupTable.applyColorMap(preset);
     lookupTable.setMappingRange(dataRange[0], dataRange[1]);
     lookupTable.updateRange();
+    lookupTableLine.applyColorMap(preset);
+    lookupTableLine.setMappingRange(dataRange[0], dataRange[1]);
+    lookupTableLine.updateRange();
     renderWindow.render();
   }
   applyPreset();
   presetSelector.addEventListener('change', applyPreset);
-
+  let passWireFlag = false;
   // --------------------------------------------------------------------
   // Representation handling
   // --------------------------------------------------------------------
-
+  // 更新视图
   function updateRepresentation(event) {
-    const [visibility, representation, edgeVisibility] = event.target.value
-      .split(':')
-      .map(Number);
-    actor.getProperty().set({ representation, edgeVisibility });
-    actor.setVisibility(!!visibility);
+    const array = event.target.value.replace(/\s*/g, '').split(':');
+    const id = array.pop();
+    const [visibility, representation, edgeVisibility] = array.map(Number);
+    console.log('[visibility, representation, edgeVisibility]', [
+      visibility,
+      representation,
+      edgeVisibility,
+    ]);
+    actorPoly.getProperty().set({ representation, edgeVisibility });
+    actorPoly.setVisibility(!!visibility);
+    if (passWireFlag) {
+      renderer.removeAllActors();
+      renderer.addActor(actorPoly);
+      passWireFlag = false;
+    }
+    if (id === 'Wireframe') {
+      console.log('我执行了!!Wireframe');
+      renderer.removeAllActors();
+      actorLine.getProperty().set({
+        representation: 1,
+        edgeVisibility: 1,
+      });
+      mapperLine.set({
+        scalarVisibility: true,
+      });
+      // actorLine.getProperty().setColor([1, 1, 1]); // 处理没有属性的情况
+      passWireFlag = true;
+      renderer.addActor(actorLine);
+    } else if (id === 'WireframewithSurface') {
+      renderer.removeAllActors();
+      passWireFlag = true;
+      mapperLine.set({
+        scalarVisibility: false,
+      });
+      actorLine.getProperty().setColor([0, 0, 0]);
+      actorLine.getProperty().setLineWidth(4);
+      renderer.addActor(actorLine);
+      renderer.addActor(actorPoly);
+    }
     renderWindow.render();
   }
   representationSelector.addEventListener('change', updateRepresentation);
@@ -333,155 +444,46 @@ function createPipeline(fileName, fileContents) {
   // --------------------------------------------------------------------
   // Opacity handling
   // --------------------------------------------------------------------
-
+  // 更新透明度
   function updateOpacity(event) {
     const opacity = Number(event.target.value) / 100;
-    actor.getProperty().setOpacity(opacity);
+    actorPoly.getProperty().setOpacity(opacity);
+    actorLine.getProperty().setOpacity(opacity);
     renderWindow.render();
   }
 
   opacitySelector.addEventListener('input', updateOpacity);
-
-  // --------------------------------------------------------------------
-  // Clip handling
-  // --------------------------------------------------------------------
-
-  const bounds = source.getBounds();
-  const center = [
-    (bounds[1] + bounds[0]) / 2,
-    (bounds[3] + bounds[2]) / 2,
-    (bounds[5] + bounds[4]) / 2,
-  ];
-  const planes = [];
-  const plane1 = vtkPlane.newInstance({
-    origin: center,
-    normal: [0.5, 0.5, 1.0],
+  const pointValueLen = sourcePoly.getPoints().get().values.length;
+  // console.log('displacementData:::', displacementData);
+  console.log('pointValueLen', pointValueLen);
+  const offsetVBO = new Float32Array(pointValueLen * 3);
+  let offsetVBOIndex = 0;
+  Object.values(displacementData).map((value) => {
+    offsetVBO[offsetVBOIndex] = value * 50.0;
+    offsetVBOIndex++;
   });
-  planes.push(plane1);
-  // const plane2 = vtkPlane.newInstance({
-  //   origin: center,
-  //   normal: [0.0, 1.0, 0.0],
-  // });
-  // planes.push(plane2);
-  // const plane3 = vtkPlane.newInstance({
-  //   origin: center,
-  //   normal: [0.0, 0.0, 1.0],
-  // });
-  // planes.push(plane3);
-
-  // const NAMED_COLORS = {
-  //   BANANA: [227 / 255, 207 / 255, 87 / 255],
-  //   TOMATO: [255 / 255, 99 / 255, 71 / 255],
-  //   SANDY_BROWN: [244 / 255, 164 / 255, 96 / 255],
-  // };
-
-  const filter = vtkClipClosedSurface.newInstance({
-    clippingPlanes: planes,
-    passPointData: true,
-    // generateOutline: true,
-    // generateFaces: false,
-  });
-
-  filter.setInputConnection(vtpReader.getOutputPort(0));
-  filter.setScalarModeToColors();
-  filter.update();
-
-  const filterData = filter.getOutputData();
-
-  mapper.setInputData(filterData);
-
-  // function updateNormal(e) {
-  //   const normal = [
-  //     Number(normalSelectorX.value),
-  //     Number(normalSelectorY.value),
-  //     Number(normalSelectorZ.value),
-  //   ];
-  //   plane1.setNormal(normal);
-  //   filter.update();
-  //   mapper.setInputData(filter.getOutputData());
-  //   renderWindow.render();
-  // }
-
-  // normalSelectorX.addEventListener('blur', updateNormal);
-  // normalSelectorY.addEventListener('blur', updateNormal);
-  // normalSelectorZ.addEventListener('blur', updateNormal);
+  customShader(mapperPoly, offsetVBO);
+  customShader(mapperLine, offsetVBO);
   // --------------------------------------------------------------------
-  // ColorBy handling
+  // ColorBy handling===>渲染颜色的关键==>vtp中会存储vtp
   // --------------------------------------------------------------------
-
-  const colorByOptions = [].concat(
-    source
-      .getPointData()
+  const colorByOptions = [{ value: ':', label: 'Solid color' }].concat(
+    sourcePoly
+      .getPointData() // 特殊属性数据
       .getArrays()
       .map((a) => ({
         label: `(p) ${a.getName()}`,
         value: `PointData:${a.getName()}`,
-        dataRange: source
-          .getPointData()
-          .getArrayByName(a.getName())
-          .getRange() || [0, 1],
       })),
-    source
+    sourcePoly
       .getCellData()
       .getArrays()
       .map((a) => ({
         label: `(c) ${a.getName()}`,
         value: `CellData:${a.getName()}`,
-        dataRange: source
-          .getCellData()
-          .getArrayByName(a.getName())
-          .getRange() || [0, 1],
-      })),
-    { value: ':', label: 'Solid color', dataRange: [0, 1] }
+      }))
   );
-
-  // // --------------------------------------------------------------------
-  // // vtkPolyDataContour Start
-  // // --------------------------------------------------------------------
-  // const polyDataContour = vtkPolyDataContour.newInstance({
-  //   contourValue: 0.0,
-  // });
-
-  // polyDataContour.setInputData(vtpReader.getOutputData(0));
-
-  // const curDataRange = colorByOptions[0].dataRange;
-  // function safeDivide(a, b, divider) {
-  //   function afterDecimal(num) {
-  //     if (Number.isInteger(num)) {
-  //       return 0;
-  //     }
-  //     return num.toString().split('.')[1].length;
-  //   }
-  //   const aDigits = afterDecimal(a);
-  //   const bDigits = afterDecimal(b);
-
-  //   const resultDigits = Math.max(aDigits, bDigits);
-
-  //   const result = (a + b) / divider;
-  //   return Number.parseFloat(result).toFixed(resultDigits);
-  // }
-  // const firstIsoValue = safeDivide(curDataRange[0], curDataRange[1], 3);
-  // polyDataContour.set({
-  //   contourValue: firstIsoValue,
-  // });
-  // // mapper.setInputData(polyDataContour.getOutputData());
-
-  // function updateIsoValue(e) {
-  //   const isoValue = Number(e.target.value);
-  //   this.setAttribute('value', isoValue);
-  //   polyDataContour.setContourValue(isoValue);
-  //   mapper.setInputData(polyDataContour.getOutputData());
-  //   renderWindow.render();
-  // }
-
-  // contourSelector.setAttribute('value', firstIsoValue);
-  // contourSelector.setAttribute('value', firstIsoValue);
-  // contourSelector.addEventListener('input', updateIsoValue);
-
-  // // --------------------------------------------------------------------
-  // // vtkPolyDataContour End
-  // // --------------------------------------------------------------------
-
+  console.log('colorByOptions', colorByOptions);
   colorBySelector.innerHTML = colorByOptions
     .map(
       ({ label, value }) =>
@@ -499,7 +501,7 @@ function createPipeline(fileName, fileContents) {
     const scalarVisibility = location.length > 0;
     if (scalarVisibility) {
       const newArray =
-        source[`get${location}`]().getArrayByName(colorByArrayName);
+        sourcePoly[`get${location}`]().getArrayByName(colorByArrayName);
       activeArray = newArray;
       const newDataRange = activeArray.getRange();
       dataRange[0] = newDataRange[0];
@@ -513,8 +515,12 @@ function createPipeline(fileName, fileContents) {
       const numberOfComponents = activeArray.getNumberOfComponents();
       if (numberOfComponents > 1) {
         // always start on magnitude setting
-        if (mapper.getLookupTable()) {
-          const lut = mapper.getLookupTable();
+        if (mapperPoly.getLookupTable()) {
+          const lut = mapperPoly.getLookupTable();
+          lut.setVectorModeToMagnitude();
+        }
+        if (mapperLine.getLookupTable()) {
+          const lut = mapperLine.getLookupTable();
           lut.setVectorModeToMagnitude();
         }
         componentSelector.style.display = 'block';
@@ -534,12 +540,18 @@ function createPipeline(fileName, fileContents) {
       componentSelector.style.display = 'none';
       scalarBarActor.setVisibility(false);
     }
-    mapper.set({
+    mapperPoly.set({
       colorByArrayName,
       colorMode,
       interpolateScalarsBeforeMapping,
       scalarMode,
       scalarVisibility,
+    });
+    mapperLine.set({
+      colorByArrayName,
+      colorMode,
+      interpolateScalarsBeforeMapping,
+      scalarMode,
     });
     applyPreset();
   }
@@ -547,8 +559,23 @@ function createPipeline(fileName, fileContents) {
   updateColorBy({ target: colorBySelector });
 
   function updateColorByComponent(event) {
-    if (mapper.getLookupTable()) {
-      const lut = mapper.getLookupTable();
+    if (mapperPoly.getLookupTable()) {
+      const lut = mapperPoly.getLookupTable(); // 颜色配置
+      if (event.target.value === -1) {
+        lut.setVectorModeToMagnitude();
+      } else {
+        lut.setVectorModeToComponent();
+        lut.setVectorComponent(Number(event.target.value));
+        const newDataRange = activeArray.getRange(Number(event.target.value));
+        dataRange[0] = newDataRange[0];
+        dataRange[1] = newDataRange[1];
+        lookupTable.setMappingRange(dataRange[0], dataRange[1]);
+        lut.updateRange();
+      }
+      renderWindow.render();
+    }
+    if (mapperLine.getLookupTable()) {
+      const lut = mapperLine.getLookupTable(); // 颜色配置
       if (event.target.value === -1) {
         lut.setVectorModeToMagnitude();
       } else {
@@ -588,12 +615,14 @@ function createPipeline(fileName, fileContents) {
   // --------------------------------------------------------------------
   // Pipeline handling
   // --------------------------------------------------------------------
+  actorPoly.setMapper(mapperPoly);
+  actorLine.setMapper(mapperLine);
+  // 需要考虑是否添加mapperLine
+  mapperPoly.setInputData(sourcePoly);
+  mapperLine.setInputData(sourceLine);
+  renderer.addActor(actorPoly);
 
-  actor.setMapper(mapper);
-  // mapper.setInputData(source);
-  renderer.addActor(actor);
-
-  scalarBarActor.setScalarsToColors(mapper.getLookupTable());
+  scalarBarActor.setScalarsToColors(mapperPoly.getLookupTable());
 
   // Manage update when lookupTable change
   const debouncedRender = debounce(renderWindow.render, 10);
@@ -604,10 +633,14 @@ function createPipeline(fileName, fileContents) {
   renderWindow.render();
 
   global.pipeline[fileName] = {
-    actor,
-    mapper,
-    source,
+    actorPoly,
+    mapperPoly,
+    sourcePoly,
     lookupTable,
+    actorLine,
+    mapperLine,
+    sourceLine,
+    lookupTableLine,
     renderer,
     renderWindow,
   };
@@ -623,6 +656,7 @@ function loadFile(file) {
   reader.onload = function onLoad(e) {
     createPipeline(file.name, reader.result);
   };
+  console.log('file', file);
   reader.readAsArrayBuffer(file);
 }
 

@@ -34,7 +34,7 @@ export function substitute(source, search, replace, all) {
 // ----------------------------------------------------------------------------
 
 function vtkShaderProgram(publicAPI, model) {
-  console.log('进入vtkShader·Program');
+  // console.log('进入vtkShader·Program');
   // Set our className
   model.classHierarchy.push('vtkShaderProgram');
 
@@ -440,7 +440,7 @@ function vtkShaderProgram(publicAPI, model) {
     }
 
     const loc = model.context.getAttribLocation(model.handle, name);
-    console.log('ShaderProgram-loc', loc, name);
+    // console.log('ShaderProgram-loc', loc, name);
     if (loc === -1) {
       return false;
     }

@@ -132,7 +132,7 @@ function vtkOpenGLHelper(publicAPI, model) {
     // has something changed that would require us to recreate the shader?
     if (publicAPI.getNeedToRebuildShaders(ren, actor, oglMapper)) {
       const shaders = { Vertex: null, Fragment: null, Geometry: null };
-      console.log('我执行了updateShaders');
+      // console.log('我执行了updateShaders');
       oglMapper.buildShaders(shaders, ren, actor);
 
       // compile and bind the program if needed

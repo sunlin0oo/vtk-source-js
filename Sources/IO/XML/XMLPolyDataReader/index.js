@@ -75,7 +75,7 @@ function vtkXMLPolyDataReader(publicAPI, model) {
     headerType,
     flag
   ) => {
-    console.log('我执行了,获取到flag:::', flag);
+    // console.log('我执行了,获取到flag:::', flag);
     const datasetElem = rootElem.getElementsByTagName(model.dataType)[0];
     const pieces = datasetElem.getElementsByTagName('Piece');
     const nbPieces = pieces.length;
@@ -94,7 +94,7 @@ function vtkXMLPolyDataReader(publicAPI, model) {
         headerType,
         model.binaryBuffer
       );
-      console.log('nbPoints', nbPoints);
+      // console.log('nbPoints', nbPoints);
       // Cells
       let nbCells = 0;
       ['Verts', 'Lines', 'Strips', 'Polys'].forEach((cellType) => {
@@ -108,7 +108,7 @@ function vtkXMLPolyDataReader(publicAPI, model) {
           model.binaryBuffer
         );
       });
-      console.log('nbCells', nbCells);
+      // console.log('nbCells', nbCells);
       // Fill data
       vtkXMLReader.processFieldData(
         nbPoints,
@@ -133,7 +133,7 @@ function vtkXMLPolyDataReader(publicAPI, model) {
       model.output[outputIndex] = polydata;
     }
     if (flag) {
-      console.log('我执行了！！');
+      // console.log('我执行了！！');
       for (let num = 1; num < 3; num++) {
         // Create dataset
         const outputIndex = 0;

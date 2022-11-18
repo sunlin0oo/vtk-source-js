@@ -80,12 +80,11 @@ void main()
   //VTK::TCoord::Impl
 
   //VTK::Light::Impl
-
+  
   if (gl_FragData[0].a <= 0.0)
     {
     discard;
     }
-
   //VTK::DepthPeeling::Impl
 
   //VTK::Picking::Impl
