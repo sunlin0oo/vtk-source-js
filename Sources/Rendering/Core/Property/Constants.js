@@ -8,6 +8,7 @@ export const Representation = {
   POINTS: 0,
   WIREFRAME: 1,
   SURFACE: 2,
+  LINES: 3
 };
 
 export const Interpolation = Shading;

@@ -91,6 +91,8 @@ function vtkProperty(publicAPI, model) {
     publicAPI.setRepresentation(Representation.SURFACE);
   publicAPI.setRepresentationToPoints = () =>
     publicAPI.setRepresentation(Representation.POINTS);
+  publicAPI.setRepresentationToLines = () =>
+    publicAPI.setRepresentation(Representation.LINES);
   publicAPI.getRepresentationAsString = () =>
     macro.enumToString(Representation, model.representation);
 }
